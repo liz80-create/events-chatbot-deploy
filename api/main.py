@@ -18,9 +18,10 @@ from psycopg2.extras import RealDictCursor, execute_batch
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from mangum import Mangum
 
 # --- Configuration ---
 load_dotenv()
@@ -313,5 +314,5 @@ async def sync_data():
 async def health_check():
     return {"status": "healthy"}
 
-# This is the handler that Vercel will use
-handler = app
+# Create the Mangum handler for Vercel
+handler = Mangum(app)
