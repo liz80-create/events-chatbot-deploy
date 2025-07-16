@@ -161,7 +161,7 @@ class NeonDBManager:
             'owner': fields.get('Owner'),
             'notes': fields.get('Notes'),
             'tags': fields.get('Tags'),
-            'pmo_tracking':.get('PMO Tracking'),
+            'pmo_tracking': fields.get('PMO Tracking'),
             'created_on': _parse_datetime(fields.get('Created On'))
         }
     
