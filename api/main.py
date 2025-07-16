@@ -315,8 +315,6 @@ async def sync_data():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-@app.options("/api/query")
-async def options_query():
-    return {"message": "OK"}
+
 # Create the Mangum handler for Vercel
 handler = Mangum(app)
