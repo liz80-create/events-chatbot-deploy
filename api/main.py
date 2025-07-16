@@ -16,7 +16,7 @@ import psycopg2  # Fixed import
 import google.generativeai as genai
 from psycopg2.extras import RealDictCursor, execute_batch
 from dataclasses import dataclass
-from dotenv import load_dotenv
+
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from mangum import Mangum
 
 # --- Configuration ---
-load_dotenv()
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
