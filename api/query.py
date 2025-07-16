@@ -1,44 +1,25 @@
-# /api/index.py
+# /api/query.py
 
-import ssl
-import certifi
-import os
 import json
 import logging
-import asyncio
+import os
+import ssl
+import certifi
 import re
+import asyncio
+from http.server import BaseHTTPRequestHandler
+from urllib.parse import parse_qs
+
+import psycopg2
+from psycopg2.extras import RealDictCursor, execute_batch
+import google.generativeai as genai
+import aiohttp
+from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-# --- Required Libraries ---
-import aiohttp
-import psycopg2
-import google.generativeai as genai
-from psycopg2.extras import RealDictCursor, execute_batch
-from dataclasses import dataclass
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-
-# --- Final, Correct Configuration ---
-
-# 1. Initialize the FastAPI app immediately.
-#    This is the object Vercel will look for and run.
-app = FastAPI()
-
-# 2. Apply the CORS middleware with explicit methods.
-#    This is the standard way to handle cross-origin requests.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
-
-# --- Your Application Code ---
-# The rest of your code follows.
+# --- Application Logic and Classes ---
+# This section contains your original, correct logic.
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -51,8 +32,6 @@ class Config:
     NEON_DB_URL: Optional[str] = os.getenv('NEON_DB_URL')
     GEMINI_API_KEY: Optional[str] = os.getenv('GEMINI_API_KEY')
 
-# All of your classes (AirtableClient, NeonDBManager, GeminiManager) are correct.
-# They are omitted here for brevity but should remain in your file.
 class AirtableClient:
     def __init__(self, pat_token: str, base_id: str, table_name: str):
         if not all([pat_token, base_id, table_name]): 
@@ -190,7 +169,6 @@ class NeonDBManager:
             return "\n".join(f"- {col[0]} ({col[1]})" for col in cursor.fetchall())
 
 class GeminiManager:
-    """Uses Gemini to generate full SQL queries based on conversational flow."""
     def __init__(self, api_key: str):
         if not api_key: 
             raise ValueError("Gemini API key required.")
@@ -198,8 +176,6 @@ class GeminiManager:
         self.model = genai.GenerativeModel('gemini-1.5-flash')
 
     async def generate_sql_query(self, user_query: str, flow: str, table_schema: str) -> str:
-        """Generates a full SQL query using a flow-specific prompt."""
-
         if flow == "get_event_details":
             prompt = f"""
 You are a PostgreSQL expert. The user has provided the following text to identify a single, specific event from a list they were shown: "{user_query}"
@@ -259,61 +235,81 @@ You are an expert PostgreSQL query generator for a Festival Events database. Con
 
 **User Question:** "{user_query}"
 """
-        
         try:
             response = await self.model.generate_content_async(prompt)
             sql_query = re.sub(r'```sql\n?|```', '', response.text).strip()
-            
             if not sql_query.lstrip().upper().startswith("SELECT"):
                 logger.warning(f"AI generated a non-SELECT query, blocking it: {sql_query}")
                 return "SELECT 'Invalid request. Only SELECT queries are allowed.';"
-
             return sql_query
         except Exception as e:
             logger.error(f"SQL generation failed: {e}")
             return "SELECT 'AI query generation failed. Please try rephrasing.';"
 
-class QueryRequest(BaseModel):
-    flow: str
-    query: Optional[str] = None
-
-# Initialize services and database schema
-config = Config()
-db_manager = NeonDBManager(config.NEON_DB_URL)
-gemini_manager = GeminiManager(config.GEMINI_API_KEY)
-TABLE_SCHEMA = ""
+# Initialize services ONCE (module scope) for reuse between invocations
 try:
-    db_manager.setup_database()
+    config = Config()
+    db_manager = NeonDBManager(config.NEON_DB_URL)
+    gemini_manager = GeminiManager(config.GEMINI_API_KEY)
     TABLE_SCHEMA = db_manager.get_table_schema()
 except Exception as e:
-    logger.error(f"Database setup failed: {e}")
+    logger.error(f"FATAL: Failed to initialize services during cold start: {e}")
+    db_manager = None
+    gemini_manager = None
+    TABLE_SCHEMA = ""
 
+# --- The Vercel Handler Class ---
+# This is the entry point for all requests to /api/query
+class handler(BaseHTTPRequestHandler):
 
-@app.post("/query")
-async def handle_query(request: QueryRequest):
-    if not request.query:
-        raise HTTPException(status_code=400, detail="Query text cannot be empty.")
+    def do_POST(self):
+        if not db_manager or not gemini_manager:
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Backend services are not configured correctly.'}).encode('utf-8'))
+            return
+            
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            body = json.loads(post_data)
+            
+            user_query = body.get('query')
+            flow = body.get('flow')
 
-    try:
-        sql_query = await gemini_manager.generate_sql_query(request.query, request.flow, TABLE_SCHEMA)
+            if not user_query or not flow:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Missing "query" or "flow" in request body.'}).encode('utf-8'))
+                return
+
+            results = asyncio.run(self.get_results(user_query, flow))
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(results).encode('utf-8'))
+
+        except Exception as e:
+            logger.error(f"Error processing POST request: {e}", exc_info=True)
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'An internal server error occurred.'}).encode('utf-8'))
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
+    async def get_results(self, user_query, flow):
+        sql_query = await gemini_manager.generate_sql_query(user_query, flow, TABLE_SCHEMA)
         logger.info(f"AI Generated SQL: {sql_query}")
-        results = db_manager.execute_query(sql_query)
-        response_type = "detail" if request.flow == "get_event_details" else "list"
-        return {"data": results, "type": response_type}
-    except Exception as e:
-        logger.error(f"Error processing query: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="An internal server error occurred.")
-
-@app.post("/sync")
-async def sync_data():
-    try:
-        airtable_client = AirtableClient(config.AIRTABLE_PAT, config.AIRTABLE_BASE_ID, config.AIRTABLE_TABLE_NAME)
-        records = await airtable_client.fetch_all_records()
-        db_manager.sync_records(records)
-        return {"message": f"Synced {len(records)} records."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+        query_results = db_manager.execute_query(sql_query)
+        response_type = "detail" if flow == "get_event_details" else "list"
+        return {"data": query_results, "type": response_type}
