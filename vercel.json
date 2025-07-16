@@ -6,6 +6,8 @@
   },
   "rewrites": [
     {
+
+        
       "source": "/api/main",
       "destination": "/api/main.py"
     }
