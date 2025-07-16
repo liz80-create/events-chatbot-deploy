@@ -1,0 +1,7 @@
+fastapi
+psycopg2-binary
+google-generativeai
+aiohttp
+python-dotenv
+certifi
+uvicorn
