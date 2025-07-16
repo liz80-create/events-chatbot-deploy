@@ -285,7 +285,7 @@ class QueryRequest(BaseModel):
     query: Optional[str] = None
 
 # Updated endpoint to match frontend expectations
-@app.post("/api/query")
+@app.post("/query")
 async def handle_query(request: QueryRequest):
     if not request.query: 
         raise HTTPException(status_code=400, detail="Query text cannot be empty.")
