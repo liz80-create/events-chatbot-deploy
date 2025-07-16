@@ -274,10 +274,10 @@ except Exception as e:
 app = FastAPI(redirect_slashes=False)
 app.add_middleware(
     CORSMiddleware, 
-    allow_origins=["*"], 
-    allow_credentials=True, 
-    allow_methods=["*"], 
-    allow_headers=["*"]
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 class QueryRequest(BaseModel):
