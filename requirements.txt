@@ -1,7 +1,10 @@
+# requirements.txt
+
 fastapi
-psycopg
+uvicorn
+python-dotenv
+mangum
 google-generativeai
 aiohttp
-python-dotenv
 certifi
-uvicorn
+psycopg2-binary  # Use this instead of psycopg2
