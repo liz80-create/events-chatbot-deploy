@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 # --- Required Libraries ---
 import aiohttp
-import psycopg2
+import psycopg
 import google.generativeai as genai
 from psycopg2.extras import RealDictCursor, execute_batch
 from dataclasses import dataclass
