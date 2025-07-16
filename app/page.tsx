@@ -92,7 +92,13 @@ export default function EventsChatbot() {
     if (event.notes) details += `\n📝 **Notes:**\n${event.notes}`
     return details.trim()
   }
-
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    // This explicitly prevents the browser's default GET request
+    e.preventDefault();
+    
+    // Call your existing logic
+    handleSubmit(input);
+  };
   const handleSubmit = async (userInput: string) => {
     if (!userInput.trim() || isLoading) return
 
@@ -519,10 +525,7 @@ export default function EventsChatbot() {
                     className="border-t border-gray-200/60 bg-white/60 backdrop-blur-xl p-6"
                   >
                     <form
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        handleSubmit(input)
-                      }}
+                      onSubmit={handleFormSubmit}
                       className="flex gap-4 max-w-4xl mx-auto"
                     >
                       <div className="flex-1 relative">
