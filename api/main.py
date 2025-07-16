@@ -285,7 +285,7 @@ class QueryRequest(BaseModel):
     query: Optional[str] = None
 
 # Updated endpoint to match frontend expectations
-@app.post("/query")
+@app.post("/api/query")
 async def handle_query(request: QueryRequest):
     if not request.query: 
         raise HTTPException(status_code=400, detail="Query text cannot be empty.")
@@ -315,7 +315,7 @@ async def sync_data():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-@app.options("/query")
+@app.options("/api/query")
 async def options_query():
     return {"message": "OK"}
 # Create the Mangum handler for Vercel
