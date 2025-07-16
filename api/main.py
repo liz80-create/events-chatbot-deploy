@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from mangum import Mangum
+
 
 # --- Configuration ---
 
@@ -317,4 +317,3 @@ async def health_check():
     return {"status": "healthy"}
 
 # Create the Mangum handler for Vercel
-handler = Mangum(app)
