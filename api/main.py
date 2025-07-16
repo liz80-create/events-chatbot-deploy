@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 # --- Required Libraries ---
 import aiohttp
-import psycopg
+import psycopg2  # Fixed import
 import google.generativeai as genai
 from psycopg2.extras import RealDictCursor, execute_batch
 from dataclasses import dataclass
@@ -284,7 +284,8 @@ class QueryRequest(BaseModel):
     flow: str
     query: Optional[str] = None
 
-@app.post("/")
+# Updated endpoint to match frontend expectations
+@app.post("/api/query")
 async def handle_query(request: QueryRequest):
     if not request.query: 
         raise HTTPException(status_code=400, detail="Query text cannot be empty.")
@@ -298,6 +299,7 @@ async def handle_query(request: QueryRequest):
     except Exception as e:
         logger.error(f"Error processing query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal server error occurred.")
+
 
 @app.post("/sync")
 async def sync_data():
@@ -313,6 +315,8 @@ async def sync_data():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
+@app.options("/api/query")
+async def options_query():
+    return {"message": "OK"}
 # Create the Mangum handler for Vercel
 handler = Mangum(app)
