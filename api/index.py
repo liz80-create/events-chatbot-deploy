@@ -1,4 +1,4 @@
-# /api/main.py
+# /api/index.py
 
 import ssl
 import certifi
@@ -8,22 +8,37 @@ import logging
 import asyncio
 import re
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # --- Required Libraries ---
 import aiohttp
-import psycopg2  # Fixed import
+import psycopg2
 import google.generativeai as genai
 from psycopg2.extras import RealDictCursor, execute_batch
 from dataclasses import dataclass
-
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# --- Final, Correct Configuration ---
 
-# --- Configuration ---
+# 1. Initialize the FastAPI app immediately.
+#    This is the object Vercel will look for and run.
+app = FastAPI()
+
+# 2. Apply the CORS middleware with explicit methods.
+#    This is the standard way to handle cross-origin requests.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# --- Your Application Code ---
+# The rest of your code follows.
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -36,7 +51,8 @@ class Config:
     NEON_DB_URL: Optional[str] = os.getenv('NEON_DB_URL')
     GEMINI_API_KEY: Optional[str] = os.getenv('GEMINI_API_KEY')
 
-# --- Service Classes ---
+# All of your classes (AirtableClient, NeonDBManager, GeminiManager) are correct.
+# They are omitted here for brevity but should remain in your file.
 class AirtableClient:
     def __init__(self, pat_token: str, base_id: str, table_name: str):
         if not all([pat_token, base_id, table_name]): 
@@ -257,39 +273,27 @@ You are an expert PostgreSQL query generator for a Festival Events database. Con
             logger.error(f"SQL generation failed: {e}")
             return "SELECT 'AI query generation failed. Please try rephrasing.';"
 
-# --- Initialize services ---
+class QueryRequest(BaseModel):
+    flow: str
+    query: Optional[str] = None
+
+# Initialize services and database schema
 config = Config()
 db_manager = NeonDBManager(config.NEON_DB_URL)
 gemini_manager = GeminiManager(config.GEMINI_API_KEY)
-
-# Initialize database and get schema
+TABLE_SCHEMA = ""
 try:
     db_manager.setup_database()
     TABLE_SCHEMA = db_manager.get_table_schema()
 except Exception as e:
     logger.error(f"Database setup failed: {e}")
-    TABLE_SCHEMA = ""
 
-# --- FastAPI Application Setup ---
-app = FastAPI(redirect_slashes=False)
-app.add_middleware(
-    CORSMiddleware, 
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["*"],
-)
 
-class QueryRequest(BaseModel):
-    flow: str
-    query: Optional[str] = None
-
-# Updated endpoint to match frontend expectations
 @app.post("/query")
 async def handle_query(request: QueryRequest):
-    if not request.query: 
+    if not request.query:
         raise HTTPException(status_code=400, detail="Query text cannot be empty.")
-    
+
     try:
         sql_query = await gemini_manager.generate_sql_query(request.query, request.flow, TABLE_SCHEMA)
         logger.info(f"AI Generated SQL: {sql_query}")
@@ -299,7 +303,6 @@ async def handle_query(request: QueryRequest):
     except Exception as e:
         logger.error(f"Error processing query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal server error occurred.")
-
 
 @app.post("/sync")
 async def sync_data():
@@ -311,9 +314,6 @@ async def sync_data():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Health check endpoint
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
-# Create the Mangum handler for Vercel
