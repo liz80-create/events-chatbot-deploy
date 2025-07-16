@@ -126,13 +126,18 @@ class GeminiManager:
             prompt = f"""You are a PostgreSQL expert. The user has provided the following text to identify a single, specific event from a list they were shown: "{user_query}"\n**Database Schema:**\n{table_schema}\nThis text might be a messy combination of the event's name, location, and date.\n**Your Task:**\n1. Intelligently identify the core **event name**.\n2. Intelligently identify the **date**, if one is mentioned in the text.\n3. Write a precise SQL query to `SELECT *` from the `events` table that matches these extracted criteria.\n4. If a date is found, add a condition like `AND start_time::date = 'YYYY-MM-DD'`.\n5. Use `ILIKE` for the name match to be case-insensitive.\n6. You **MUST** use `LIMIT 1` to ensure only one result is returned.\n7. Return ONLY the raw SQL query.\n**Example 1:**\nUser Question: "AM volunteers shift 2 release on July 19, 2025"\nSQL Output: SELECT * FROM events WHERE (name ILIKE '%AM volunteers shift 2 release%' OR programme ILIKE '%AM volunteers shift 2 release%' OR notes ILIKE '%AM volunteers shift 2 release%') AND start_time::date = '2025-07-19' ORDER BY start_time ASC LIMIT 1;"""
         else:
             prompt = f"""You are an expert PostgreSQL query generator for a Festival Events database. Convert the user's question into a precise SQL query.\n**Database Schema:**\n{table_schema}\n**ADVANCED SEARCH RULES:**\n1. **Keyword Logic (CRITICAL RULE):** For multi-word queries like "food fest" or "film screening", identify the core keywords (e.g., 'food', 'fest'). Each keyword should have its own search block (`(name ILIKE '%keyword%' OR programme ILIKE '%keyword%')`). You **MUST** connect these distinct keyword blocks with `AND` to ensure all terms are present in the results.\n2. **Date Handling (CRITICAL RULE):** If the user provides a date or asks about "today" or "tomorrow", you **MUST** search against the `start_time` column. The correct PostgreSQL syntax is `start_time::date = 'YYYY-MM-DD'`. Do **NOT** use `ILIKE` for dates.\n**Query Construction Rules:**\n- Today's date is {datetime.now().strftime('%Y-%m-%d')}.\n- Use `ILIKE` for **text-based, non-date** searching.\n- Always include `ORDER BY start_time ASC`.\n- Select all columns: `SELECT * FROM events`.\n**Security Rules:**\n- ONLY generate `SELECT` queries. For any other request, return: `SELECT 'Invalid request.';`\n**Response Format:**\n- Return ONLY the raw SQL query.\n**User Question:** "{user_query}" """
+        
         try:
-            response = await self.model.generate_content_async(prompt)
+            # FIX: Use the synchronous generate_content method instead of async
+            response = self.model.generate_content(prompt)
             sql_query = re.sub(r'```sql\n?|```', '', response.text).strip()
+            
             if not sql_query.lstrip().upper().startswith("SELECT"):
                 logger.warning(f"AI generated a non-SELECT query, blocking it: {sql_query}")
                 return "SELECT 'Invalid request. Only SELECT queries are allowed.';"
+            
             return sql_query
+            
         except Exception as e:
             logger.error(f"SQL generation failed: {e}", exc_info=True)
             return "SELECT 'AI query generation failed. Please try rephrasing.';"
@@ -171,14 +176,26 @@ async def handle_query(request: QueryRequest):
     flow, user_query = request.flow, request.query
     if not user_query:
         raise HTTPException(status_code=400, detail="Query text cannot be empty.")
+    
     try:
-        sql_query = await gemini_manager.generate_sql_query(user_query, flow, TABLE_SCHEMA)
-        logger.info(f"AI Generated SQL: {sql_query}")
-        # Running the synchronous DB call in an async thread pool
+        # FIX: Run the SQL generation in a thread pool to avoid event loop issues
         loop = asyncio.get_running_loop()
+        sql_query = await loop.run_in_executor(
+            None, 
+            gemini_manager.generate_sql_query, 
+            user_query, 
+            flow, 
+            TABLE_SCHEMA
+        )
+        
+        logger.info(f"AI Generated SQL: {sql_query}")
+        
+        # Running the synchronous DB call in an async thread pool
         results = await loop.run_in_executor(None, db_manager.execute_query, sql_query)
         response_type = "detail" if flow == "get_event_details" else "list"
+        
         return {"data": results, "type": response_type}
+        
     except Exception as e:
         logger.error(f"Error processing query for flow '{flow}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal server error occurred.")
