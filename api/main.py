@@ -271,7 +271,7 @@ except Exception as e:
     TABLE_SCHEMA = ""
 
 # --- FastAPI Application Setup ---
-app = FastAPI()
+app = FastAPI(redirect_slashes=False)
 app.add_middleware(
     CORSMiddleware, 
     allow_origins=["*"], 
