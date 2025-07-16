@@ -201,7 +201,7 @@ async def lifespan(app: FastAPI):
 
 app.router.lifespan_context = lifespan
 
-@app.post("/api/query")
+@app.post("/")
 async def handle_query(request: QueryRequest):
     if not request.query: raise HTTPException(status_code=400, detail="Query text cannot be empty.")
     try:

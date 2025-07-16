@@ -101,7 +101,7 @@ export default function EventsChatbot() {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${API_URL}/api/query`, {
+      const response = await fetch('/api/query', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ flow: "events", query: userInput }),
